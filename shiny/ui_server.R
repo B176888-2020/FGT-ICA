@@ -71,37 +71,76 @@ qc <- tabItem("qc",
 # Differential Expression
 de <- tabItem("de",
               
+              # Figure Section
               fluidRow(
+                width = 12,
                 box(
                   width = 12,
                   status = "info",
                   solidHeader = TRUE,
                   title = div(strong("Differential Expression")),
-                  p(".",
-                    style = "font-size:18px; font-weight:500;line-height:40px;"),
+                  h3("Figures Section"),
+                  helpText("Tips: This panel is used to show the cluster dendrogram, PCA figure. You can select the plots that interest you and present the figure in customised size."),
                   br()
                 )
               ),
               
               sidebarLayout(
+                
                 sidebarPanel(
-                  sliderInput("font_row",
-                              "Font size row:",
-                              min = 6,
-                              max = 14,
-                              value = 10),
-                  sliderInput("font_col",
-                              "Font size col:",
-                              min = 6,
-                              max = 14,
-                              value = 10)
+                  radioButtons("dePlotOption", "Plot Options:", 
+                               choices=c("Cluster Dendrogram", "PCA", "Venn diagram", "Heatmap")), 
+                  sliderInput("heightdex",
+                              "Figure height (px):",
+                              min = 0,
+                              max = 900,
+                              value = 400),
+                  sliderInput("widthdex",
+                              "Figure width (px):",
+                              min = 0,
+                              max = 1600,
+                              value = 400)
                 ),
                 
                 # Show a plot of the generated distribution
                 mainPanel(
-                  plotOutput("dePlot", width = "100%")
+                  uiOutput("dePlot.ui")
+                )
+              ),
+              
+              # Table section
+              fluidRow(
+                width = 12,
+                box(
+                  width = 12,
+                  status = "info",
+                  solidHeader = TRUE,
+                  h3("Table Section"),
+                  helpText("Tips: This panel is used to show the data table for differential genes from Limma and fold change tables. You can search elements and sort columns through the data table."),
+                  br()
+                )
+              ),
+              
+              sidebarLayout(
+                
+                sidebarPanel(
+                  radioButtons("deTableOption", "Table Options:", 
+                               choices=c("Limma", "Fold change")), 
+
+                ),
+                
+                # Show a plot of the generated distribution
+                mainPanel(
+                  
+                    uiOutput("DeStatTable.ui")
+                  
                 )
               )
+              
+              
+              
+              
+              
 )
 
 # Functional Enrichment
@@ -113,8 +152,7 @@ fe <- tabItem("fe",
                   status = "info",
                   solidHeader = TRUE,
                   title = div(strong("Functional Enrichment")),
-                  p(".",
-                    style = "font-size:18px; font-weight:500;line-height:40px;"),
+                  helpText("This table shows the summary of the functional enrichment results and differential expression genes."),
                   br()
                 )
               ),
@@ -122,26 +160,21 @@ fe <- tabItem("fe",
               sidebarLayout(
                 
                 sidebarPanel(
-                  sliderInput("font_row",
-                              "Font size row:",
-                              min = 6,
-                              max = 14,
-                              value = 10),
-                  sliderInput("font_col",
-                              "Font size col:",
-                              min = 6,
-                              max = 14,
-                              value = 10)
+
+                  
                 ),
                 
-                # Show a plot of the generated distribution
+                
                 mainPanel(
-                  plotOutput("fePlot", width = "100%")
+                  
+                  dataTableOutput("feTable")
+                  
                 )
               )
+
 )
 
-# The ui interface arrangement
+# ui.R The ui interface arrangement
 ui <- fluidPage(
   # Title panel
   # Application title
@@ -156,15 +189,14 @@ ui <- fluidPage(
   
 )
 
-# Define server logic required to draw a histogram
+# server.R The server script to response
 server <- function(input, output,session) {
   
-  # UI Part
+  # Quality Control
   output$qcPlot.ui <- renderUI({
     plotOutput("qcPlot", width = input$widthx, height = input$heightx)
   })
   
-  # Plot Part
   output$qcPlot <- renderPlot({
     # Choose the plot option
     if (input$qcPlotOption == "Histogram(Curve)") {
@@ -179,17 +211,55 @@ server <- function(input, output,session) {
     }
   }, execOnResize = F)
   
+  # Differential Expression
+  output$dePlot.ui <- renderUI({
+    plotOutput("dePlot", width = input$widthdex, height = input$heightdex)
+  })
+  
+  output$DeStatTable.ui <- renderUI({
+    dataTableOutput('DeStatTable')
+  })
+  
   output$dePlot <- renderPlot({
     
-    hist(mydata, xlab = 'Log intensity', ylab = 'Density')
+    # Choose the plot option
+    if (input$dePlotOption == "Cluster Dendrogram") {
+      plot(hc)
+    } else if (input$dePlotOption == "PCA") {
+      s3d<-scatterplot3d(pca$x[,1:3], pch=19, 
+                         color = rainbow(length(dfPhenoData$sample)))
+      s3d.coords <- s3d$xyz.convert(pca$x[,1:3])
+      text(s3d.coords$x, s3d.coords$y, labels = colnames(values), 
+           pos = 3,offset = 0.5, cex = 0.8)
+    } else if (input$dePlotOption == "Venn diagram") {
+      vennDiagram(clas)
+    } else if (input$dePlotOption == "Heatmap"){
+      pheatmap(plotme,scale="row")
+    }
     
   }, execOnResize = F)
   
-  output$fePlot <- renderPlot({
-    
-    hist(mydata, xlab = 'Log intensity', ylab = 'Density')
-    
-  }, execOnResize = F)
+  output$DeStatTable <- renderDataTable({
+   if (input$deTableOption == "Fold change"){
+     all.data
+   } else if (input$deTableOption == "Limma") {
+     myresults_LFC
+   } 
+  },
+    options = list(
+      pageLength = 5,
+      lengthMenu = c(5, 10, 15, 20)
+    )
+  )
+  
+  
+  # Functional Enrichment
+  output$feTable <- renderDataTable({
+    dfFinal
+  }, 
+  options = list(
+    pageLength = 5,
+    lengthMenu = c(5, 10, 15, 20)))
   
   observeEvent(input$refresh, {
     session$invalidate
